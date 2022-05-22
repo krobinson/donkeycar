@@ -22,7 +22,7 @@ MODELS_PATH = os.path.join(CAR_PATH, 'models')
 
 #VEHICLE
 DRIVE_LOOP_HZ = 20
-MAX_LOOPS = 100000
+MAX_LOOPS = None
 
 #CAMERA
 CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
@@ -50,7 +50,6 @@ THROTTLE_FORWARD_PWM = 500
 THROTTLE_STOPPED_PWM = 370
 THROTTLE_REVERSE_PWM = 220
 
-# DRIVETRAIN
 DRIVE_TRAIN_TYPE = "SERVO_ESC" # SERVO_ESC|DC_STEER_THROTTLE|DC_TWO_WHEEL|SERVO_HBRIDGE_PWM|PIGPIO_PWM|MM1|MOCK
 
 # #LIDAR
@@ -65,7 +64,6 @@ STEERING_RC_GPIO = 26
 THROTTLE_RC_GPIO = 20
 DATA_WIPER_RC_GPIO = 19
 
-
 #LOGGING
 HAVE_CONSOLE_LOGGING = True
 LOGGING_LEVEL = 'INFO'          # (Python logging level) 'NOTSET' / 'DEBUG' / 'INFO' / 'WARNING' / 'ERROR' / 'FATAL' / 'CRITICAL'
@@ -75,6 +73,8 @@ LOGGING_FORMAT = '%(message)s'  # (Python logging format - https://docs.python.o
 #TRAINING
 DEFAULT_AI_FRAMEWORK = 'tensorflow'  # The default AI framework to use. Choose from (tensorflow|pytorch)
 DEFAULT_MODEL_TYPE = 'linear' #(linear|categorical|rnn|imu|behavior|3d|localizer|latent)
+CREATE_TF_LITE = True  # automatically create tflite model in training
+CREATE_TENSOR_RT = False  # automatically create tensorrt model in training
 BATCH_SIZE = 128
 TRAIN_TEST_SPLIT = 0.8
 MAX_EPOCHS = 100
@@ -87,7 +87,6 @@ PRINT_MODEL_SUMMARY = True      #print layers and weights to stdout
 OPTIMIZER = None                #adam, sgd, rmsprop, etc.. None accepts default
 LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
 LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
-CACHE_IMAGES = True             #keep images in memory. will speed succesive epochs, but crater if not enough mem.
 PRUNE_CNN = False
 PRUNE_PERCENT_TARGET = 75 # The desired percentage of pruning.
 PRUNE_PERCENT_PER_ITERATION = 20 # Percenge of pruning that is perform per iteration.
@@ -101,10 +100,33 @@ NUM_LAST_LAYERS_TO_TRAIN = 7
 #For the categorical model, this limits the upper bound of the learned throttle
 #it's very IMPORTANT that this value is matched from the training PC config.py and the robot.py
 #and ideally wouldn't change once set.
-MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.5
+MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.8
 
 #RNN or 3D
 SEQUENCE_LENGTH = 3
+
+# Augmentations and Transformations
+AUGMENTATIONS = []
+TRANSFORMATIONS = []
+# Settings for brightness and blur, use 'MULTIPLY' and/or 'BLUR' in
+# AUGMENTATIONS
+AUG_MULTIPLY_RANGE = (0.5, 3.0)
+AUG_BLUR_RANGE = (0.0, 3.0)
+# Number of pixels to crop, requires 'CROP' in TRANSFORMATIONS to be set
+ROI_CROP_TOP = 45
+ROI_CROP_BOTTOM = 0
+ROI_CROP_RIGHT = 0
+ROI_CROP_LEFT = 0
+# For trapezoidal see explanation in augmentations.py, requires 'TRAPEZE' in
+# TRANSFORMATIONS to be set
+ROI_TRAPEZE_LL = 0
+ROI_TRAPEZE_LR = 160
+ROI_TRAPEZE_UL = 20
+ROI_TRAPEZE_UR = 140
+ROI_TRAPEZE_MIN_Y = 60
+ROI_TRAPEZE_MAX_Y = 120
+
+
 
 #SOMBRERO
 HAVE_SOMBRERO = False

@@ -3,14 +3,17 @@ import os
 from time import time
 from typing import List, Dict, Union, Tuple
 
+from tensorflow.python.keras.models import load_model
+
 from donkeycar.config import Config
 from donkeycar.parts.keras import KerasPilot
-from donkeycar.parts.tflite import keras_model_to_tflite
+from donkeycar.parts.interpreter import keras_model_to_tflite, \
+    saved_model_to_tensor_rt
 from donkeycar.pipeline.database import PilotDatabase
 from donkeycar.pipeline.sequence import TubRecord, TubSequence, TfmIterator
 from donkeycar.pipeline.types import TubDataset
 from donkeycar.pipeline.augmentations import ImageAugmentation
-from donkeycar.utils import get_model_by_type, normalize_image
+from donkeycar.utils import get_model_by_type, normalize_image, train_test_split
 import tensorflow as tf
 import numpy as np
 
@@ -31,11 +34,21 @@ class BatchSequence(object):
         self.sequence = TubSequence(records)
         self.batch_size = self.config.BATCH_SIZE
         self.is_train = is_train
-        self.augmentation = ImageAugmentation(config)
+        self.augmentation = ImageAugmentation(config, 'AUGMENTATIONS')
+        self.transformation = ImageAugmentation(config, 'TRANSFORMATIONS')
         self.pipeline = self._create_pipeline()
 
     def __len__(self) -> int:
         return math.ceil(len(self.pipeline) / self.batch_size)
+
+    def image_processor(self, img_arr):
+        """ Transformes the images and augments if in training. Then
+            normalizes it. """
+        img_arr = self.transformation.run(img_arr)
+        if self.is_train:
+            img_arr = self.augmentation.run(img_arr)
+        norm_img = normalize_image(img_arr)
+        return norm_img
 
     def _create_pipeline(self) -> TfmIterator:
         """ This can be overridden if more complicated pipelines are
@@ -43,20 +56,11 @@ class BatchSequence(object):
         # 1. Initialise TubRecord -> x, y transformations
         def get_x(record: TubRecord) -> Dict[str, Union[float, np.ndarray]]:
             """ Extracting x from record for training"""
-            # this transforms the record into x for training the model to x,y
-            x0 = self.model.x_transform(record)
-            # for multiple input tensors the return value here is a tuple
-            # where the image is in first slot otherwise x0 is the image
-            x1 = x0[0] if isinstance(x0, tuple) else x0
-            # apply augmentation to training data only
-            x2 = self.augmentation.augment(x1) if self.is_train else x1
-            # normalise image, assume other input data comes already normalised
-            x3 = normalize_image(x2)
-            # fill normalised image back into tuple if necessary
-            x4 = (x3, ) + x0[1:] if isinstance(x0, tuple) else x3
+            out_tuple = self.model.x_transform_and_process(
+                record, self.image_processor)
             # convert tuple to dictionary which is understood by tf.data
-            x5 = self.model.x_translate(x4)
-            return x5
+            out_dict = self.model.x_translate(out_tuple)
+            return out_dict
 
         def get_y(record: TubRecord) -> Dict[str, Union[float, np.ndarray]]:
             """ Extracting y from record for training """
@@ -77,25 +81,13 @@ class BatchSequence(object):
             output_shapes=self.model.output_shapes())
         return dataset.repeat().batch(self.batch_size)
 
-
-def get_model_train_details(cfg: Config, database: PilotDatabase,
-                            model: str = None, model_type: str = None) \
-        -> Tuple[str, int, str, bool]:
-    if not model_type:
-        model_type = cfg.DEFAULT_MODEL_TYPE
-    train_type = model_type
-    is_tflite = False
-    if 'tflite_' in train_type:
-        train_type = train_type.replace('tflite_', '')
-        is_tflite = True
-    model_num = 0
+def get_model_train_details(database: PilotDatabase, model: str = None) \
+        -> Tuple[str, int]:
     if not model:
         model_name, model_num = database.generate_model_name()
     else:
-        model_name, model_ext = os.path.splitext(model)
-        is_tflite = model_ext == '.tflite'
-
-    return model_name, model_num, train_type, is_tflite
+        model_name, model_num = os.path.abspath(model), 0
+    return model_name, model_num
 
 
 def train(cfg: Config, tub_paths: str, model: str = None,
@@ -105,37 +97,51 @@ def train(cfg: Config, tub_paths: str, model: str = None,
     Train the model
     """
     database = PilotDatabase(cfg)
-    model_name, model_num, train_type, is_tflite = \
-        get_model_train_details(cfg, database, model, model_type)
+    if model_type is None:
+        model_type = cfg.DEFAULT_MODEL_TYPE
+    model_path, model_num = \
+        get_model_train_details(database, model)
 
-    output_path = os.path.join(cfg.MODELS_PATH, model_name + '.h5')
-    kl = get_model_by_type(train_type, cfg)
+    base_path = os.path.splitext(model_path)[0]
+    kl = get_model_by_type(model_type, cfg)
     if transfer:
         kl.load(transfer)
     if cfg.PRINT_MODEL_SUMMARY:
-        print(kl.model.summary())
+        print(kl.interpreter.summary())
 
     tubs = tub_paths.split(',')
     all_tub_paths = [os.path.expanduser(tub) for tub in tubs]
-    dataset = TubDataset(cfg, all_tub_paths)
-    training_records, validation_records = dataset.train_test_split()
+    dataset = TubDataset(config=cfg, tub_paths=all_tub_paths,
+                         seq_size=kl.seq_size())
+    training_records, validation_records \
+        = train_test_split(dataset.get_records(), shuffle=True,
+                           test_size=(1. - cfg.TRAIN_TEST_SPLIT))
     print(f'Records # Training {len(training_records)}')
     print(f'Records # Validation {len(validation_records)}')
 
-    training_pipe = BatchSequence(kl, cfg, training_records, is_train=True)
-    validation_pipe = BatchSequence(kl, cfg, validation_records, is_train=False)
+    # We need augmentation in validation when using crop / trapeze
 
-    dataset_train = training_pipe.create_tf_data().prefetch(
-        tf.data.experimental.AUTOTUNE)
-    dataset_validate = validation_pipe.create_tf_data().prefetch(
-        tf.data.experimental.AUTOTUNE)
-    train_size = len(training_pipe)
-    val_size = len(validation_pipe)
+    if 'fastai_' in model_type:
+        from donkeycar.parts.pytorch.torch_data import TorchTubDataset, get_default_transform
+        transform = get_default_transform(resize=False)
+        dataset_train = TorchTubDataset(cfg, training_records, transform=transform)
+        dataset_validate = TorchTubDataset(cfg, validation_records, transform=transform)
+        train_size = len(training_records)
+        val_size = len(validation_records)
+    else:
+        training_pipe = BatchSequence(kl, cfg, training_records, is_train=True)
+        validation_pipe = BatchSequence(kl, cfg, validation_records, is_train=False)
+        tune = tf.data.experimental.AUTOTUNE
+        dataset_train = training_pipe.create_tf_data().prefetch(tune)
+        dataset_validate = validation_pipe.create_tf_data().prefetch(tune)
+
+        train_size = len(training_pipe)
+        val_size = len(validation_pipe)
 
     assert val_size > 0, "Not enough validation data, decrease the batch " \
                          "size or add more data."
 
-    history = kl.train(model_path=output_path,
+    history = kl.train(model_path=model_path,
                        train_data=dataset_train,
                        train_steps=train_size,
                        batch_size=cfg.BATCH_SIZE,
@@ -147,17 +153,25 @@ def train(cfg: Config, tub_paths: str, model: str = None,
                        patience=cfg.EARLY_STOP_PATIENCE,
                        show_plot=cfg.SHOW_PLOT)
 
-    if is_tflite:
-        tf_lite_model_path = f'{os.path.splitext(output_path)[0]}.tflite'
-        keras_model_to_tflite(output_path, tf_lite_model_path)
+    if getattr(cfg, 'CREATE_TF_LITE', True):
+        tf_lite_model_path = f'{base_path}.tflite'
+        keras_model_to_tflite(model_path, tf_lite_model_path)
+
+    if getattr(cfg, 'CREATE_TENSOR_RT', False):
+        # load h5 (ie. keras) model
+        model_rt = load_model(model_path)
+        # save in tensorflow savedmodel format (i.e. directory)
+        model_rt.save(f'{base_path}.savedmodel')
+        # pass savedmodel to the rt converter
+        saved_model_to_tensor_rt(f'{base_path}.savedmodel', f'{base_path}.trt')
 
     database_entry = {
         'Number': model_num,
-        'Name': model_name,
+        'Name': os.path.basename(base_path),
         'Type': str(kl),
         'Tubs': tub_paths,
         'Time': time(),
-        'History': history.history,
+        'History': history,
         'Transfer': os.path.basename(transfer) if transfer else None,
         'Comment': comment,
         'Config': str(cfg)

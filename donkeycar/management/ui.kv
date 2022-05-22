@@ -8,6 +8,8 @@
 #:set layout_height common_height + layout_pad_x
 #:set layout_height_double 2 * common_height + layout_pad_x
 #:set layout_pad_xy [layout_pad_x, layout_pad_x // 2]
+#:set supported_models ['linear', 'categorical', 'inferred', 'memory', 'behavior', 'localizer', 'rnn', '3d']
+#:set drive_models [pre + t for pre in['', 'tflite_', 'tensorrt_'] for t in supported_models ]
 
 <PaddedBoxLayout>:
     size_hint_y: None
@@ -28,6 +30,7 @@
             id: file_chooser
             rootpath: root.root_path
             dirselect: True
+            filter_dirs: True
             filters: root.filters
             FileChooserListLayout
 
@@ -282,7 +285,7 @@
         id: tub_btn
         text: 'Tub Manager'
         on_press:
-            root.keys_enabled = False
+            root.manager.current_screen.keys_enabled = False
             root.manager.current = 'tub'
             root.manager.current_screen.keys_enabled = True
             root.manager.current_screen.ids.tab_bar.disable_only(root.manager.current_screen.name)
@@ -290,7 +293,7 @@
         id: train_btn
         text: 'Trainer'
         on_press:
-            root.keys_enabled = False
+            root.manager.current_screen.keys_enabled = False
             root.manager.current = 'train'
             root.manager.current_screen.keys_enabled = True
             root.manager.current_screen.ids.tab_bar.disable_only(root.manager.current_screen.name)
@@ -298,16 +301,16 @@
         id: pilot_btn
         text: 'Pilot Arena'
         on_press:
-            root.keys_enabled = False
+            root.manager.current_screen.keys_enabled = False
             root.manager.current = 'pilot'
-            if not root.manager.current_screen.index: root.manager.current_screen.index = 0
             root.manager.current_screen.keys_enabled = True
+            if not root.manager.current_screen.index: root.manager.current_screen.index = 0
             root.manager.current_screen.ids.tab_bar.disable_only(root.manager.current_screen.name)
     Button:
         id: car_btn
         text: 'Car Connector'
         on_press:
-            root.keys_enabled = False
+            root.manager.current_screen.keys_enabled = False
             root.manager.current = 'car'
             root.manager.current_screen.keys_enabled = True
             root.manager.current_screen.ids.tab_bar.disable_only(root.manager.current_screen.name)
@@ -365,13 +368,14 @@
         text: 'Choose pilot'
         size_hint_x: 0.5
         disabled: True
-        on_press: root.open_popup()
+        on_press:
+            root.open_popup()
     MySpinner:
         id: pilot_spinner
         pos_hint: {'center': (.5, .5)}
         size_hint_x: 0.5
         text: 'Model type'
-        values: ['linear', 'categorical', 'tflite_linear']
+        values: drive_models
     AutoLabel:
         id: pilot_file
         text: root.file_path
@@ -386,7 +390,6 @@
             manager: root.manager
         PaddedBoxLayout:
             PilotLoader:
-                num: num
                 id: pilot_loader_1
                 num: '1'
                 data_panel: data_panel_1
@@ -399,12 +402,14 @@
             spacing: layout_pad_x
             OverlayImage:
                 id: img_1
-                keras_part: pilot_loader_1.pilot
+                pilot: pilot_loader_1.pilot
                 throttle_field: data_in.throttle_field
+                is_left: True
             OverlayImage:
                 id: img_2
-                keras_part: pilot_loader_2.pilot
+                pilot: pilot_loader_2.pilot
                 throttle_field: data_in.throttle_field
+                is_left: False
         PaddedBoxLayout:
             size_hint_y: 0.5
             DataPanel:
@@ -435,7 +440,7 @@
                 id: button_bright
                 size_hint_x: 0.5
                 text: 'Brightness {:4.2f}'.format(slider_bright.value)
-                on_press: root.set_brightness(slider_bright.value) if self.state == 'down' else root.remove_brightness()
+                on_press: root.set_brightness(slider_bright.value)
             Slider:
                 id: slider_bright
                 value: 1
@@ -446,13 +451,22 @@
                 id: button_blur
                 size_hint_x: 0.5
                 text: 'Blur {:4.2f}'.format(slider_blur.value)
-                on_press: root.set_blur(slider_blur.value) if self.state == 'down' else root.remove_blur()
+                on_press: root.set_blur(slider_blur.value)
             Slider:
                 id: slider_blur
                 value: 0
                 min: 0
                 max: 4
                 on_value: root.set_blur(self.value)
+        PaddedBoxLayout:
+            ToggleButton:
+                id: button_mask
+                text: 'Trapezoidal mask'
+                on_press: root.set_mask(self.state)
+            ToggleButton:
+                id: button_crop
+                text: 'Cropping mask'
+                on_press: root.set_crop(self.state)
         PaddedBoxLayout:
             size_hint_y: 0.5
             ControlPanel:
@@ -470,8 +484,10 @@
     font_name: 'data/fonts/RobotoMono-Regular.ttf'
     font_size: 12 if platform == 'linux' else 24
     size_hint_y: None
+    size_hint_x: None
     height: self.texture_size[1]
-    text_size: self.width, None
+    width: self.texture_size[0]
+    #text_size: self.width, None
 
 <TransferSelector>:
     title: 'Choose transfer model'
@@ -494,7 +510,7 @@
         Label:
             size_hint_y: None
             height: common_height
-            text: 'Overwrite config'
+            text: 'Overwrite config: use json syntax, i.e. "abc" for strings and true/false for bool'
         BoxLayout:
             size_hint_y: None
             height: layout_height
@@ -525,11 +541,12 @@
                 id: train_spinner
                 size_hint_x: 0.5
                 text: 'linear'
-                values: ['linear', 'categorical', 'tflite_linear']
+                values: supported_models
             TextInput:
                 id: comment
                 multiline: False
                 text: 'Comment'
+                on_text: app.train_screen.ids.status.text = f'Adding comment: {self.text}'
         BoxLayout:
             size_hint_y: None
             height: layout_height
@@ -550,6 +567,20 @@
             size_hint_y: 1.0 if check.state == 'down' else 0.1
             DataFrameLabel:
                 id: scroll_tubs
+        BoxLayout:
+            size_hint_y: None
+            height: layout_height
+            padding: layout_pad_xy
+            spacing: layout_pad_x
+            MySpinner:
+                id: delete_spinner
+                text: 'Pilot'
+            Button:
+                id: delete_btn
+                on_press:
+                    root.database.delete_entry(delete_spinner.text)
+                    root.reload_database()
+                text: 'Delete pilot'
         BoxLayout:
             size_hint_y: None
             height: layout_height
@@ -583,26 +614,24 @@
                 id: connected
                 text: 'Checking...'
         Label:
+            #size_hint_y: None
+            #height: common_height
+            text: 'Pull tub from car -> pc'
+        BoxLayout:
             size_hint_y: None
-            height: common_height
-            text: 'Transfer tub from car -> pc and pilot from pc -> car'
-        GridLayout:
-            cols: 4
-            row_default_height: layout_height
-            row_force_default: True
+            height: layout_height
             padding: layout_pad_xy
             spacing: layout_pad_x
-            # first row
             Label:
                 text: 'Car directory (hit return)'
-            ToggleButton:
-                id: create_dir
-                text: 'Create new folder'
-            ProgressBar:
-                value: root.pull_bar
-            ProgressBar:
-                value: root.push_bar
-            # second row
+            Label:
+                text: 'Select tub'
+
+        BoxLayout:
+            size_hint_y: None
+            height: layout_height
+            padding: layout_pad_xy
+            spacing: layout_pad_x
             TextInput:
                 id: car_dir
                 multiline: False
@@ -614,22 +643,65 @@
                 id: tub_dir_spinner
                 text: 'select'
                 values: root.files
+        BoxLayout:
+            size_hint_y: None
+            height: layout_height
+            padding: layout_pad_xy
+            spacing: layout_pad_x
+            ToggleButton:
+                id: create_dir
+                size_hint_x: 0.49
+                text: 'Create new folder'
             Button:
                 id: pull_tub
+                size_hint_x: 0.49
                 text: 'Pull tub ' + tub_dir_spinner.text
                 on_press:
                     self.disabled = True
                     root.pull(tub_dir_spinner.text)
+            ProgressBar:
+                id: pull_bar
+                #value: root.pull_bar
+        Label:
+            #size_hint_y: None
+            #height: common_height
+            text: 'Push pilots from pc -> car'
+        BoxLayout:
+            size_hint_y: None
+            height: layout_height
+            padding: layout_pad_xy
+            spacing: layout_pad_x
+            ToggleButton:
+                id: btn_h5
+                text: 'Sync h5'
+            ToggleButton:
+                id: btn_savedmodel
+                text: 'Sync savedmodel'
+            ToggleButton:
+                id: btn_tflite
+                text: 'Sync tflite'
+            ToggleButton:
+                id: btn_trt
+                text: 'Sync tensorrt'
+        BoxLayout:
+            size_hint_y: None
+            height: layout_height
+            padding: layout_pad_xy
+            spacing: layout_pad_x
             Button:
                 id: send_pilots
                 multiline: False
-                text: 'Send pilots'
+                text: 'Push pilots'
                 on_press:
                     self.disabled = True
                     root.send_pilot()
+            ProgressBar:
+                id: push_bar
+                # value: root.push_bar
+
         Label:
-            size_hint_y: None
-            height: common_height
+            # size_hint_y: None
+            # height: common_height
             text: 'Drive car'
         BoxLayout:
             size_hint_y: None
@@ -638,13 +710,12 @@
             spacing: layout_pad_x
             MySpinner:
                 id: type_spinner
-                text: 'linear'
-                values: ['linear', 'categorical', 'tflite_linear']
+                text: 'tflite_linear'
+                values: drive_models
             MySpinner:
                 id: pilot_spinner
                 text: 'No pilot'
                 values: ['No pilot'] + root.pilots
-
         BoxLayout:
             size_hint_y: None
             height: layout_height_double
@@ -666,10 +737,6 @@
                     self.disabled = True
                     drive_btn.disabled = False
 
-        Label:
-            size_hint_y: 1.0
-            text: ''
-
 
 <StartScreen>:
     BoxLayout:
@@ -680,4 +747,3 @@
         Image:
             source: root.img_path
             size: self.texture_size
-
