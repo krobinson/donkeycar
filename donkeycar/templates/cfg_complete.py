@@ -35,6 +35,7 @@ CAMERA_HFLIP = False
 CAMERA_INDEX = 0  # used for 'WEBCAM' and 'CVCAM' when there is more than one camera connected 
 # For CSIC camera - If the camera is mounted in a rotated position, changing the below parameter will correct the output frame orientation
 CSIC_CAM_GSTREAMER_FLIP_PARM = 0 # (0 => none , 4 => Flip horizontally, 6 => Flip vertically)
+BGR2RGB = False  # true to convert from BRG format to RGB format; requires opencv
 
 # For IMAGE_LIST camera
 # PATH_MASK = "~/mycar/data/tub_1_20-03-12/*.jpg"
@@ -63,6 +64,7 @@ SSD1306_RESOLUTION = 1 # 1 = 128x32; 2 = 128x64
 # "DC_TWO_WHEEL" uses HBridge in 2-pin mode to control two drive motors, one on the left, and one on the right.
 # "DC_TWO_WHEEL_L298N" using HBridge in 3-pin mode to control two drive motors, one of the left and one on the right.
 # "MOCK" no drive train.  This can be used to test other features in a test rig.
+# "VESC" VESC Motor controller to set servo angle and duty cycle
 # (deprecated) "SERVO_HBRIDGE_PWM" use ServoBlaster to output pwm control from the PiZero directly to control steering,
 #                                  and HBridge for a drive motor.
 # (deprecated) "PIGPIO_PWM" uses Raspberrys internal PWM
@@ -444,6 +446,7 @@ SEQUENCE_LENGTH = 3             #some models use a number of images over time. T
 #IMU
 HAVE_IMU = False                #when true, this add a Mpu6050 part and records the data. Can be used with a
 IMU_SENSOR = 'mpu6050'          # (mpu6050|mpu9250)
+IMU_ADDRESS = 0x68              # if AD0 pin is pulled high them address is 0x69, otherwise it is 0x68
 IMU_DLP_CONFIG = 0              # Digital Lowpass Filter setting (0:250Hz, 1:184Hz, 2:92Hz, 3:41Hz, 4:20Hz, 5:10Hz, 6:5Hz)
 
 #SOMBRERO
@@ -600,6 +603,7 @@ PID_P = -10.0                       # proportional mult for PID path follower
 PID_I = 0.000                       # integral mult for PID path follower
 PID_D = -0.2                        # differential mult for PID path follower
 PID_THROTTLE = 0.2                  # constant throttle value during path following
+USE_CONSTANT_THROTTLE = False       # whether or not to use the constant throttle or variable throttle captured during path recording
 SAVE_PATH_BTN = "cross"             # joystick button to save path
 RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back to origin
 
