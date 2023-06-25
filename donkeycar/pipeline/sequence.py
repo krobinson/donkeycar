@@ -12,13 +12,24 @@ Y = TypeVar('Y', covariant=True)
 XOut = TypeVar('XOut', covariant=True)
 YOut = TypeVar('YOut', covariant=True)
 
+class NewIterator(Generic[R, XOut, YOut]):
+    def __init__(self) -> None:
+        pass
+
+
+class NewIterator2(Generic[XOut, YOut]):
+    def __init__(self) -> None:
+        pass
+
+class NewIterator3(Generic[X, Y, XOut, YOut]):
+    def __init__(self) -> None:
+        pass
 
 class SizedIterator(Generic[X], Iterator[X], Sized):
     def __init__(self) -> None:
         # This is a protocol type without explicitly using a `Protocol`
-        # Using `Protocol` requires Python 3.7
+        # Using `Protocol` requirGeneric[X, Y, XOut, YOut]es Python 3.7
         pass
-
 
 class TubSeqIterator(SizedIterator[TubRecord]):
     def __init__(self, records: List[TubRecord]) -> None:
@@ -42,7 +53,7 @@ class TubSeqIterator(SizedIterator[TubRecord]):
     next = __next__
 
 
-class TfmIterator(Generic[R, XOut, YOut],  SizedIterator[Tuple[XOut, YOut]]):
+class TfmIterator(NewIterator,  SizedIterator[Tuple[XOut, YOut]]):
     def __init__(self,
                  iterable: Iterable[R],
                  x_transform: Callable[[R], XOut],
@@ -64,8 +75,7 @@ class TfmIterator(Generic[R, XOut, YOut],  SizedIterator[Tuple[XOut, YOut]]):
     def __next__(self):
         return next(self.iterator)
 
-
-class TfmTupleIterator(Generic[X, Y, XOut, YOut],  SizedIterator[Tuple[XOut, YOut]]):
+class TfmTupleIterator(NewIterator3,  SizedIterator[Tuple[XOut, YOut]]):
     def __init__(self,
                  iterable: Iterable[Tuple[X, Y]],
                  x_transform: Callable[[X], XOut],
@@ -88,7 +98,7 @@ class TfmTupleIterator(Generic[X, Y, XOut, YOut],  SizedIterator[Tuple[XOut, YOu
         return next(self.iterator)
 
 
-class BaseTfmIterator_(Generic[XOut, YOut],  SizedIterator[Tuple[XOut, YOut]]):
+class BaseTfmIterator_(NewIterator2,  SizedIterator[Tuple[XOut, YOut]]):
     '''
     A basic transforming iterator.
     Do no use this class directly.
