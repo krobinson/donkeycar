@@ -75,6 +75,7 @@ DEFAULT_AI_FRAMEWORK = 'tensorflow'  # The default AI framework to use. Choose f
 DEFAULT_MODEL_TYPE = 'linear' #(linear|categorical|rnn|imu|behavior|3d|localizer|latent)
 CREATE_TF_LITE = True  # automatically create tflite model in training
 CREATE_TENSOR_RT = False  # automatically create tensorrt model in training
+SAVE_MODEL_AS_H5 = False  # if old keras format should be used instead of savedmodel
 BATCH_SIZE = 128
 TRAIN_TEST_SPLIT = 0.8
 MAX_EPOCHS = 100
@@ -87,6 +88,7 @@ PRINT_MODEL_SUMMARY = True      #print layers and weights to stdout
 OPTIMIZER = None                #adam, sgd, rmsprop, etc.. None accepts default
 LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
 LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
+CACHE_IMAGES = True             # if images are cached in training for speed up
 PRUNE_CNN = False
 PRUNE_PERCENT_TARGET = 75 # The desired percentage of pruning.
 PRUNE_PERCENT_PER_ITERATION = 20 # Percenge of pruning that is perform per iteration.
@@ -108,10 +110,10 @@ SEQUENCE_LENGTH = 3
 # Augmentations and Transformations
 AUGMENTATIONS = []
 TRANSFORMATIONS = []
-# Settings for brightness and blur, use 'MULTIPLY' and/or 'BLUR' in
+# Settings for brightness and blur, use 'BRIGHTNESS' and/or 'BLUR' in
 # AUGMENTATIONS
-AUG_MULTIPLY_RANGE = (0.5, 3.0)
-AUG_BLUR_RANGE = (0.0, 3.0)
+AUG_BRIGHTNESS_RANGE = 0.2  # this is interpreted as [-0.2, 0.2]
+AUG_BLUR_RANGE = (0, 3)
 # Number of pixels to crop, requires 'CROP' in TRANSFORMATIONS to be set
 ROI_CROP_TOP = 45
 ROI_CROP_BOTTOM = 0

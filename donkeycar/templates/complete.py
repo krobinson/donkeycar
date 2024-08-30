@@ -159,8 +159,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #
     # maintain run conditions for user mode and autopilot mode parts.
     #
-    V.add(UserPilotCondition(),
-          inputs=['user/mode', "cam/image_array", "cam/image_array"],
+    V.add(UserPilotCondition(show_pilot_image=getattr(cfg, 'SHOW_PILOT_IMAGE', False)),
+          inputs=['user/mode', "cam/image_array", "cam/image_array_trans"],
           outputs=['run_user', "run_pilot", "ui/image_array"])
 
     class LedConditionLogic:
@@ -315,7 +315,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         #
         model_reload_cb = None
         if '.h5' in model_path or '.trt' in model_path or '.tflite' in \
-                model_path or '.savedmodel' in model_path or '.pth':
+            model_path or '.savedmodel' in model_path or '.pth' in model_path:
             # load the whole model with weigths, etc
             load_model(kl, model_path)
 
@@ -399,10 +399,16 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
 
         #
         # Add image transformations like crop or trapezoidal mask
+        # so they get applied at inference time in autopilot mode.
         #
-        if hasattr(cfg, 'TRANSFORMATIONS') and cfg.TRANSFORMATIONS:
-            from donkeycar.pipeline.augmentations import ImageAugmentation
-            V.add(ImageAugmentation(cfg, 'TRANSFORMATIONS'),
+        if hasattr(cfg, 'TRANSFORMATIONS') or hasattr(cfg, 'POST_TRANSFORMATIONS'):
+            from donkeycar.parts.image_transformations import ImageTransformations
+            #
+            # add the complete set of pre and post augmentation transformations
+            #
+            logger.info(f"Adding inference transformations")
+            V.add(ImageTransformations(cfg, 'TRANSFORMATIONS',
+                                       'POST_TRANSFORMATIONS'),
                   inputs=['cam/image_array'], outputs=['cam/image_array_trans'])
             inputs = ['cam/image_array_trans'] + inputs[1:]
 
@@ -653,6 +659,13 @@ class DriveMode:
 
 
 class UserPilotCondition:
+    def __init__(self, show_pilot_image:bool = False) -> None:
+        """
+        :param show_pilot_image:bool True to show pilot image in pilot mode
+                                     False to show user image in pilot mode
+        """
+        self.show_pilot_image = show_pilot_image
+
     def run(self, mode, user_image, pilot_image):
         """
         Maintain run condition and which image to show in web ui
@@ -664,7 +677,7 @@ class UserPilotCondition:
         if mode == 'user':
             return True, False, user_image
         else:
-            return False, True, pilot_image
+            return False, True, pilot_image if self.show_pilot_image else user_image
 
 
 def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
@@ -783,7 +796,6 @@ def get_camera(cfg):
         if cfg.CAMERA_TYPE == "PICAM":
             from donkeycar.parts.camera import PiCamera
             cam = PiCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH,
-                           framerate=cfg.CAMERA_FRAMERATE,
                            vflip=cfg.CAMERA_VFLIP, hflip=cfg.CAMERA_HFLIP)
         elif cfg.CAMERA_TYPE == "WEBCAM":
             from donkeycar.parts.camera import Webcam
